@@ -23,8 +23,8 @@ import HardwareCatchGame from './HardwareCatchGame'
 const STREET_LENGTH = 180
 const GOPNIK_Z = -42
 const GRANDPA_Z = -100
-const DIALOGUE_INTERACTIONS_ENABLED = false
-const POLICEMAN_INTERACTION_ENABLED = false
+const DIALOGUE_INTERACTIONS_ENABLED = true
+const POLICEMAN_INTERACTION_ENABLED = true
 const POLICEMAN_X = 4.25
 const POLICEMAN_Z = GRANDPA_Z - 13
 const BAR_DOOR_X = 0
