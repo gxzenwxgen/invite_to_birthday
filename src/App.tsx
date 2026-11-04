@@ -27,6 +27,19 @@ const DIALOGUE_INTERACTIONS_ENABLED = true
 const POLICEMAN_INTERACTION_ENABLED = true
 const POLICEMAN_X = 4.25
 const POLICEMAN_Z = GRANDPA_Z - 13
+const DOG_X = -4
+const DOG_Z = -68
+const DOG_DIALOGUE_RADIUS = 3
+const CAR_COLLISION_RADIUS = 0.4
+const CAR_COLLISION_SCALE = 1.1
+const CAR_COLLIDERS = [
+  { x: 4.7, z: -15, rotationY: Math.PI, halfWidth: 1.2, halfLength: 2.3 },
+  { x: 4.7, z: -32, rotationY: 0, halfWidth: 1.2, halfLength: 2.3 },
+  { x: 4.7, z: -49, rotationY: Math.PI, halfWidth: 1.2, halfLength: 2.3 },
+  { x: 4.7, z: -66, rotationY: 0, halfWidth: 1.2, halfLength: 2.3 },
+  { x: 4.7, z: -80, rotationY: Math.PI, halfWidth: 1.2, halfLength: 2.3 },
+  { x: 4.3, z: -100, rotationY: 0, halfWidth: 1.2, halfLength: 2.3 },
+]
 const BAR_DOOR_X = 0
 const BAR_DOOR_Z = -143.44
 const BAR_DOOR_INTERACTION_RADIUS = 3
@@ -61,6 +74,20 @@ const POLICE_QUESTIONS = [
     correct: 0,
   },
 ]
+
+function intersectsCar(x: number, z: number) {
+  return CAR_COLLIDERS.some(car => {
+    const dx = x - car.x
+    const dz = z - car.z
+    const cos = Math.cos(car.rotationY)
+    const sin = Math.sin(car.rotationY)
+    const localX = cos * dx - sin * dz
+    const localZ = sin * dx + cos * dz
+
+    return Math.abs(localX) <= (car.halfWidth + CAR_COLLISION_RADIUS) * CAR_COLLISION_SCALE
+      && Math.abs(localZ) <= (car.halfLength + CAR_COLLISION_RADIUS) * CAR_COLLISION_SCALE
+  })
+}
 
 function Building({ side, z, height, color, index }: {
   side: number
@@ -612,12 +639,12 @@ function Street({ defeated, grandpaHelped, onBarDoorClick }: {
       />
       <RoadsideModel
         modelUrl={dogPoopingModelUrl}
-        position={[-4, -0.38, -68]}
+        position={[DOG_X, -0.38, DOG_Z]}
         targetHeight={1.15}
         rotationY={-Math.PI / 9}
       />
       <Car
-        position={[4.7, 0, -83]}
+        position={[4.7, 0, -80]}
         modelUrl={zaporojecModelUrl}
         scale={1.512}
         rotationY={Math.PI}
@@ -807,29 +834,31 @@ function Street({ defeated, grandpaHelped, onBarDoorClick }: {
 function PlayerControls({
   paused,
   resetSignal,
-  viewSignal,
   onGopnikEncounter,
   onGrandpaEncounter,
   onPolicemanEncounter,
   onGirlEncounter,
+  onDogEncounter,
   gopnikDefeated,
   gopnikResolved,
   grandpaHelped,
   policemanResolved,
   girlResolved,
+  dogResolved,
 }: {
   paused: boolean
   resetSignal: number
-  viewSignal: number
   onGopnikEncounter: () => void
   onGrandpaEncounter: () => void
   onPolicemanEncounter: () => void
   onGirlEncounter: () => void
+  onDogEncounter: () => void
   gopnikDefeated: boolean
   gopnikResolved: boolean
   grandpaHelped: boolean
   policemanResolved: boolean
   girlResolved: boolean
+  dogResolved: boolean
 }) {
   const { camera } = useThree()
   const keys = useRef<Record<string, boolean>>({})
@@ -837,6 +866,7 @@ function PlayerControls({
   const grandpaTriggered = useRef(false)
   const policemanTriggered = useRef(false)
   const girlTriggered = useRef(false)
+  const dogTriggered = useRef(false)
 
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
@@ -873,14 +903,8 @@ function PlayerControls({
     grandpaTriggered.current = false
     policemanTriggered.current = false
     girlTriggered.current = false
+    dogTriggered.current = false
   }, [resetSignal, camera])
-
-  useEffect(() => {
-    if (viewSignal === 0) return
-
-    camera.lookAt(0, 2, camera.position.z - 100)
-    keys.current = {}
-  }, [viewSignal, camera])
 
   useFrame((_, delta) => {
     if (paused) return
@@ -915,6 +939,18 @@ function PlayerControls({
       keys.current = {}
       camera.lookAt(POLICEMAN_X, 1.5, POLICEMAN_Z)
       onPolicemanEncounter()
+      return
+    }
+
+    const distanceToDog = Math.hypot(
+      camera.position.x - DOG_X,
+      camera.position.z - DOG_Z,
+    )
+    if (!dogResolved && !dogTriggered.current && distanceToDog <= DOG_DIALOGUE_RADIUS) {
+      dogTriggered.current = true
+      keys.current = {}
+      camera.lookAt(DOG_X, 0.8, DOG_Z)
+      onDogEncounter()
       return
     }
 
@@ -955,33 +991,25 @@ function PlayerControls({
       .crossVectors(direction, camera.up)
       .normalize()
 
-    if (keys.current['KeyW'] || keys.current['ArrowUp']) {
-      camera.position.addScaledVector(direction, speed * delta)
+    const move = new THREE.Vector3()
+    if (keys.current['KeyW'] || keys.current['ArrowUp']) move.add(direction)
+    if (keys.current['KeyS'] || keys.current['ArrowDown']) move.sub(direction)
+    if (keys.current['KeyA'] || keys.current['ArrowLeft']) move.addScaledVector(right, -1)
+    if (keys.current['KeyD'] || keys.current['ArrowRight']) move.add(right)
+
+    const nextX = THREE.MathUtils.clamp(camera.position.x + move.x * speed * delta, -4.5, 4.5)
+    const nextZ = THREE.MathUtils.clamp(camera.position.z + move.z * speed * delta, -142, -6)
+    if (!intersectsCar(nextX, nextZ)) {
+      camera.position.x = nextX
+      camera.position.z = nextZ
+    } else {
+      // Let the player slide along the body instead of getting stuck against it.
+      const slideX = THREE.MathUtils.clamp(camera.position.x + move.x * speed * delta, -4.5, 4.5)
+      if (!intersectsCar(slideX, camera.position.z)) camera.position.x = slideX
+
+      const slideZ = THREE.MathUtils.clamp(camera.position.z + move.z * speed * delta, -142, -6)
+      if (!intersectsCar(camera.position.x, slideZ)) camera.position.z = slideZ
     }
-
-    if (keys.current['KeyS'] || keys.current['ArrowDown']) {
-      camera.position.addScaledVector(direction, -speed * delta)
-    }
-
-    if (keys.current['KeyA'] || keys.current['ArrowLeft']) {
-      camera.position.addScaledVector(right, -speed * delta)
-    }
-
-    if (keys.current['KeyD'] || keys.current['ArrowRight']) {
-      camera.position.addScaledVector(right, speed * delta)
-    }
-
-    camera.position.z = THREE.MathUtils.clamp(
-      camera.position.z,
-      -142,
-      -6,
-    )
-
-    camera.position.x = THREE.MathUtils.clamp(
-      camera.position.x,
-      -4.5,
-      4.5,
-    )
 
     camera.position.y = 2
   })
@@ -1006,6 +1034,8 @@ export default function App() {
   const [policemanResolved, setPolicemanResolved] = useState(false)
   const [girlDialogueStep, setGirlDialogueStep] = useState<0 | 1 | 2 | null>(null)
   const [girlResolved, setGirlResolved] = useState(false)
+  const [dogDialogueActive, setDogDialogueActive] = useState(false)
+  const [dogResolved, setDogResolved] = useState(false)
   const [barDoorDialogActive, setBarDoorDialogActive] = useState(false)
   const [grandpaActive, setGrandpaActive] = useState(false)
   const [miniGameActive, setMiniGameActive] = useState(false)
@@ -1014,10 +1044,9 @@ export default function App() {
   const [gopnikResolved, setGopnikResolved] = useState(false)
   const [grandpaHelped, setGrandpaHelped] = useState(false)
   const [resetSignal, setResetSignal] = useState(0)
-  const [viewSignal, setViewSignal] = useState(0)
   const [message, setMessage] = useState('')
 
-  const paused = challengeActive || gopnikDuelActive || gopnikNotice !== '' || policeDialogueActive || policeQuizActive || policeEndingStep !== null || barDoorDialogActive || girlDialogueStep !== null || grandpaActive || miniGameActive || exchangeStep !== null
+  const paused = challengeActive || gopnikDuelActive || gopnikNotice !== '' || policeDialogueActive || policeQuizActive || policeEndingStep !== null || barDoorDialogActive || girlDialogueStep !== null || dogDialogueActive || grandpaActive || miniGameActive || exchangeStep !== null
 
   useEffect(() => {
     document.exitPointerLock()
@@ -1046,7 +1075,16 @@ export default function App() {
   const closeGirlDialogue = () => {
     setGirlDialogueStep(null)
     setGirlResolved(true)
-    setViewSignal(value => value + 1)
+  }
+
+  const startDogEncounter = () => {
+    setMessage('')
+    setDogDialogueActive(true)
+  }
+
+  const closeDogDialogue = () => {
+    setDogDialogueActive(false)
+    setDogResolved(true)
   }
 
   const showPoliceDocuments = () => {
@@ -1094,7 +1132,6 @@ export default function App() {
     if (policeEndingStep === 2) {
       if (policeHighBalance) {
         setPoliceEndingStep(null)
-        setViewSignal(value => value + 1)
         return
       }
       setPoliceEndingStep(3)
@@ -1102,7 +1139,6 @@ export default function App() {
     }
 
     setPoliceEndingStep(null)
-    setViewSignal(value => value + 1)
   }
 
   const chooseGopnikAnswer = (answer: number) => {
@@ -1135,9 +1171,7 @@ export default function App() {
       : 'Поздравляю, ты опиздюлился.')
     window.setTimeout(() => {
       setGopnikNotice('')
-      if (won) {
-        setViewSignal(value => value + 1)
-      } else {
+      if (!won) {
         setDefeated(false)
         setGopnikResolved(false)
         setGrandpaHelped(false)
@@ -1174,7 +1208,6 @@ export default function App() {
 
     document.exitPointerLock()
     setExchangeStep(null)
-    setViewSignal(value => value + 1)
   }
 
   return (
@@ -1217,16 +1250,17 @@ export default function App() {
         <PlayerControls
           paused={paused}
           resetSignal={resetSignal}
-          viewSignal={viewSignal}
           onGopnikEncounter={startGopnikChallenge}
           onGrandpaEncounter={startGrandpaChallenge}
           onPolicemanEncounter={startPoliceEncounter}
           onGirlEncounter={startGirlEncounter}
+          onDogEncounter={startDogEncounter}
           gopnikDefeated={defeated}
           gopnikResolved={gopnikResolved}
           grandpaHelped={grandpaHelped}
           policemanResolved={policemanResolved}
           girlResolved={girlResolved}
+          dogResolved={dogResolved}
         />
       </Canvas>
 
@@ -1428,6 +1462,16 @@ export default function App() {
                 <button onClick={closeGirlDialogue} style={{ padding: 14, borderRadius: 7, border: '1px solid #88745e', background: '#393532', color: 'white', fontSize: 16, cursor: 'pointer' }}>Завершить диалог</button>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {dogDialogueActive && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100003, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(0,0,0,.72)', fontFamily: 'Arial,sans-serif' }}>
+          <div style={{ width: 'min(560px, 100%)', padding: 26, borderRadius: 14, background: 'rgba(20,20,23,.98)', border: '2px solid #a88b65', color: 'white', boxShadow: '0 12px 40px #0009' }}>
+            <div style={{ color: '#e4b77c', fontSize: 13, letterSpacing: 2, marginBottom: 12 }}>СОБАКА</div>
+            <div style={{ fontSize: 22, lineHeight: 1.5, marginBottom: 20 }}>Гав — Гав</div>
+            <button onClick={closeDogDialogue} style={{ padding: 14, borderRadius: 7, border: '1px solid #88745e', background: '#393532', color: 'white', fontSize: 16, cursor: 'pointer', textAlign: 'left' }}>Погавкать в ответ</button>
           </div>
         </div>
       )}

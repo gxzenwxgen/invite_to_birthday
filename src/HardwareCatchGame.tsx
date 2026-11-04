@@ -15,6 +15,8 @@ type HardwareCatchGameProps = {
 }
 
 const PART_KINDS: PartKind[] = ['bolt', 'nut', 'screw']
+const REQUIRED_PARTS = 35
+const TOTAL_PARTS = 40
 
 function drawHexagon(
   context: CanvasRenderingContext2D,
@@ -122,8 +124,10 @@ export default function HardwareCatchGame({ onComplete }: HardwareCatchGameProps
   const onCompleteRef = useRef(onComplete)
   const [basketLane, setBasketLane] = useState(1)
   const [caughtCount, setCaughtCount] = useState(0)
+  const [fallenCount, setFallenCount] = useState(0)
   const [timeLeft, setTimeLeft] = useState(30)
   const [showFailure, setShowFailure] = useState(false)
+  const [started, setStarted] = useState(false)
   const [round, setRound] = useState(0)
 
   useEffect(() => {
@@ -131,6 +135,8 @@ export default function HardwareCatchGame({ onComplete }: HardwareCatchGameProps
   }, [onComplete])
 
   useEffect(() => {
+    if (!started) return
+
     const moveBasket = (direction: number) => {
       const nextLane = Math.max(0, Math.min(3, basketLaneRef.current + direction))
       basketLaneRef.current = nextLane
@@ -147,9 +153,11 @@ export default function HardwareCatchGame({ onComplete }: HardwareCatchGameProps
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [started])
 
   useEffect(() => {
+    if (!started) return
+
     const canvas = canvasRef.current
     const context = canvas?.getContext('2d')
     if (!canvas || !context) return
@@ -160,12 +168,14 @@ export default function HardwareCatchGame({ onComplete }: HardwareCatchGameProps
     let elapsed = 0
     let spawnTimer = 0
     let nextId = 0
+    let spawnedCount = 0
     let lastTime = performance.now()
     let lastHudUpdate = 0
     let frame = 0
     let completed = false
     let catchFlash = 0
     let failureTimeout = 0
+    setFallenCount(0)
 
     const resize = () => {
       const bounds = canvas.getBoundingClientRect()
@@ -190,7 +200,7 @@ export default function HardwareCatchGame({ onComplete }: HardwareCatchGameProps
       if (elapsed >= duration && !completed) {
         completed = true
         setTimeLeft(0)
-        if (caughtCountRef.current >= 40) {
+        if (caughtCountRef.current >= REQUIRED_PARTS) {
           onCompleteRef.current(true)
         } else {
           setShowFailure(true)
@@ -247,8 +257,10 @@ export default function HardwareCatchGame({ onComplete }: HardwareCatchGameProps
 
       spawnTimer += delta
       const spawnInterval = Math.max(0.28, 0.68 - elapsed * 0.009)
-      while (spawnTimer >= spawnInterval) {
+      while (spawnTimer >= spawnInterval && spawnedCount < TOTAL_PARTS) {
         spawnTimer -= spawnInterval
+        spawnedCount += 1
+        setFallenCount(spawnedCount)
         parts.push({
           id: nextId++,
           lane: Math.floor(Math.random() * laneCount),
@@ -268,11 +280,6 @@ export default function HardwareCatchGame({ onComplete }: HardwareCatchGameProps
           caughtCountRef.current += 1
           setCaughtCount(caughtCountRef.current)
           catchFlash = 0.18
-          if (caughtCountRef.current >= 40) {
-            completed = true
-            onCompleteRef.current(true)
-            return
-          }
           continue
         }
 
@@ -337,7 +344,7 @@ export default function HardwareCatchGame({ onComplete }: HardwareCatchGameProps
       window.clearTimeout(failureTimeout)
       window.removeEventListener('resize', resize)
     }
-  }, [round])
+  }, [round, started])
 
   const moveBasket = (direction: number) => {
     const nextLane = Math.max(0, Math.min(3, basketLaneRef.current + direction))
@@ -363,13 +370,26 @@ export default function HardwareCatchGame({ onComplete }: HardwareCatchGameProps
         fontFamily: 'Arial, sans-serif',
       }}
     >
+      {!started ? (
+        <div style={{ width: 'min(620px, 100%)', padding: '30px 28px', border: '3px solid #78492f', borderRadius: 18, background: '#f2dfb3', boxShadow: '0 18px 60px rgba(49,35,25,.4)', textAlign: 'center' }}>
+          <div style={{ color: '#7c4932', letterSpacing: 2, fontSize: 13, fontWeight: 700 }}>МАСТЕРСКАЯ ДЕДА</div>
+          <h2 style={{ margin: '8px 0 18px', fontSize: 'clamp(24px, 5vw, 34px)' }}>Собери детали для деда!</h2>
+          <div style={{ fontSize: 18, lineHeight: 1.6, textAlign: 'left' }}>
+            <p style={{ margin: '0 0 10px' }}>За 30 секунд сверху упадут ровно <strong>{TOTAL_PARTS} деталей</strong>: болты, гайки и винтики.</p>
+            <p style={{ margin: '0 0 10px' }}>Поймай в корзинку не меньше <strong>{REQUIRED_PARTS} деталей</strong>, чтобы пройти игру. Можно пропустить только 5.</p>
+            <p style={{ margin: 0 }}>Управляй корзинкой клавишами <strong>← / →</strong> или <strong>A / D</strong>. На телефоне можно нажимать экранные стрелки.</p>
+          </div>
+          <button type="button" onClick={() => setStarted(true)} style={{ ...buttonStyle, width: '100%', height: 52, marginTop: 24, fontSize: 19 }}>Начать игру</button>
+        </div>
+      ) : <>
       <div style={{ width: 'min(760px, 100%)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
         <div>
           <div style={{ color: '#7c4932', letterSpacing: 2, fontSize: 13, fontWeight: 700 }}>МАСТЕРСКАЯ ДЕДА</div>
-          <h2 style={{ margin: '5px 0 0', fontSize: 'clamp(20px, 4vw, 30px)' }}>Лови детали: собери 40!</h2>
+          <h2 style={{ margin: '5px 0 0', fontSize: 'clamp(20px, 4vw, 30px)' }}>Лови детали: поймай {REQUIRED_PARTS} из {TOTAL_PARTS}!</h2>
         </div>
         <div style={{ display: 'flex', gap: 18, fontSize: 'clamp(16px, 3vw, 22px)', fontWeight: 700, whiteSpace: 'nowrap' }}>
-          <span>Детали: {caughtCount} / 40</span>
+          <span>Детали: {caughtCount} / {REQUIRED_PARTS}</span>
+          <span>Появилось: {fallenCount} / {TOTAL_PARTS}</span>
           <span style={{ color: timeLeft <= 5 ? '#a73527' : '#352c23' }}>{timeLeft} сек.</span>
         </div>
       </div>
@@ -383,7 +403,7 @@ export default function HardwareCatchGame({ onComplete }: HardwareCatchGameProps
       </div>
 
       <div style={{ width: 'min(760px, 100%)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
-        <div style={{ color: '#4c4034', fontSize: 15 }}>← → или A / D — двигай корзинку · поймай 40 деталей за 30 секунд</div>
+        <div style={{ color: '#4c4034', fontSize: 15 }}>← → или A / D — поймай минимум {REQUIRED_PARTS} из {TOTAL_PARTS} деталей за 30 секунд</div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button type="button" onClick={() => moveBasket(-1)} aria-label="Подвинуть корзинку влево" style={buttonStyle}>←</button>
           <button type="button" onClick={() => moveBasket(1)} aria-label="Подвинуть корзинку вправо" style={buttonStyle}>→</button>
@@ -397,6 +417,7 @@ export default function HardwareCatchGame({ onComplete }: HardwareCatchGameProps
           </div>
         </div>
       )}
+      </>}
     </div>
   )
 }
