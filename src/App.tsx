@@ -5,6 +5,7 @@ import { SkeletonUtils } from 'three-stdlib'
 import * as THREE from 'three'
 import cobblestoneImage from '../textures/coblestone.png'
 import wallImage from '../textures/wall.png'
+import phoneImage from '../textures/phone.jpg'
 import gopnikModelUrl from '../3D_models/gopnik/source/e386317d-3f1f-45d5-9c63-8753ffd148f7.glb'
 import lada2107ModelUrl from '../3D_models/2107/low_poly_lada_2107.glb'
 import ae86ModelUrl from '../3D_models/ae86/free_pack_-_car.glb'
@@ -392,6 +393,7 @@ function GopnikDuelGame({ onFinish }: { onFinish: (won: boolean) => void }) {
   const [position, setPosition] = useState(50)
   const [playerHold, setPlayerHold] = useState(0)
   const [gopnikHold, setGopnikHold] = useState(0)
+  const [countdown, setCountdown] = useState<number | 'GO' | null>(3)
   const finished = useRef(false)
   const positionRef = useRef(50)
   const onFinishRef = useRef(onFinish)
@@ -401,6 +403,22 @@ function GopnikDuelGame({ onFinish }: { onFinish: (won: boolean) => void }) {
   }, [onFinish])
 
   useEffect(() => {
+    if (countdown === null) return
+
+    const timeout = window.setTimeout(() => {
+      setCountdown(current => {
+        if (current === 'GO') return null
+        if (current === 1) return 'GO'
+        return current === null ? null : current - 1
+      })
+    }, countdown === 'GO' ? 600 : 1000)
+
+    return () => window.clearTimeout(timeout)
+  }, [countdown])
+
+  useEffect(() => {
+    if (countdown !== null) return
+
     let previous = performance.now()
     let frame = 0
     let value = 50
@@ -413,9 +431,9 @@ function GopnikDuelGame({ onFinish }: { onFinish: (won: boolean) => void }) {
       value = Math.max(0, Math.min(100, positionRef.current - delta * 60))
       positionRef.current = value
 
-      if (value < 50) playerTime += delta
+      if (value > 50) playerTime += delta
       else playerTime = 0
-      if (value > 50) gopnikTime += delta
+      if (value < 50) gopnikTime += delta
       else gopnikTime = 0
 
       setPosition(value)
@@ -424,12 +442,12 @@ function GopnikDuelGame({ onFinish }: { onFinish: (won: boolean) => void }) {
 
       if (!finished.current && playerTime >= 5) {
         finished.current = true
-        onFinishRef.current(false)
+        onFinishRef.current(true)
         return
       }
       if (!finished.current && gopnikTime >= 5) {
         finished.current = true
-        onFinishRef.current(true)
+        onFinishRef.current(false)
         return
       }
       frame = requestAnimationFrame(update)
@@ -437,7 +455,7 @@ function GopnikDuelGame({ onFinish }: { onFinish: (won: boolean) => void }) {
 
     frame = requestAnimationFrame(update)
     return () => cancelAnimationFrame(frame)
-  }, [])
+  }, [countdown])
 
   const push = () => {
     if (!finished.current) {
@@ -449,16 +467,21 @@ function GopnikDuelGame({ onFinish }: { onFinish: (won: boolean) => void }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 100000, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(0,0,0,.72)', fontFamily: 'Arial,sans-serif', color: 'white' }}>
       <div style={{ width: 'min(620px, 100%)', padding: 26, borderRadius: 14, background: 'rgba(20,20,23,.98)', border: '2px solid #a88b65', boxShadow: '0 12px 40px #0009', textAlign: 'center' }}>
-        <div style={{ color: '#e4b77c', fontSize: 13, letterSpacing: 2, marginBottom: 10 }}>СКОРОСТНОЕ КЛИКАНЬЕ</div>
-        <div style={{ fontSize: 21, fontWeight: 'bold', marginBottom: 28 }}>Перетяни ползунок на сторону гопника!</div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 14 }}><span>ТВОЯ СТОРОНА</span><span>СТОРОНА ГОПНИКА</span></div>
-        <div style={{ position: 'relative', height: 30, borderRadius: 20, background: 'linear-gradient(90deg,#5376a0 0%,#5376a0 49.5%,#a88b65 50.5%,#a88b65 100%)', border: '2px solid #ded4c3', margin: '0 4px 18px' }}>
-          <div style={{ position: 'absolute', top: -7, left: `${position}%`, width: 18, height: 40, borderRadius: 8, background: '#fff4d6', border: '2px solid #392e25', boxShadow: '0 0 12px #fff9', transform: 'translateX(-50%)' }} />
+        <div style={{ color: '#e4b77c', fontSize: 13, letterSpacing: 2, marginBottom: 10 }}>ОТБЕРИ СВОЮ МОБИЛКУ У ГОПНИКА</div>
+        <div style={{ fontSize: 21, fontWeight: 'bold', marginBottom: 28 }}>Нажимай на кнопку, чтобы толкать телефон на свою сторону!</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 14 }}><span>СТОРОНА ГОПНИКА</span><span>ТВОЯ СТОРОНА</span></div>
+        <div style={{ position: 'relative', height: 30, borderRadius: 20, background: 'linear-gradient(90deg,#a88b65 0%,#a88b65 49.5%,#5376a0 50.5%,#5376a0 100%)', border: '2px solid #ded4c3', margin: '0 4px 18px' }}>
+          <img src={phoneImage} alt="Телефон" style={{ position: 'absolute', top: -19, left: `${position}%`, width: 38, height: 58, objectFit: 'contain', filter: 'drop-shadow(0 2px 4px #000b)', transform: 'translateX(-50%)', pointerEvents: 'none' }} />
           <div style={{ position: 'absolute', left: '50%', top: -5, bottom: -5, width: 3, background: '#fff', transform: 'translateX(-50%)' }} />
         </div>
         <div style={{ minHeight: 24, color: '#d4c7b5', marginBottom: 14, fontSize: 14 }}>Твоя сторона: {Math.max(0, 5 - playerHold).toFixed(1)} сек. · Гопник: {Math.max(0, 5 - gopnikHold).toFixed(1)} сек.</div>
-        <button onClick={push} style={{ width: '100%', padding: '18px 16px', borderRadius: 9, border: '1px solid #d9b681', background: '#8a5938', color: 'white', fontSize: 20, fontWeight: 'bold', cursor: 'pointer', touchAction: 'manipulation' }}>КЛИКАЙ БЫСТРЕЕ!</button>
+        <button onClick={push} style={{ width: '100%', padding: '18px 16px', borderRadius: 9, border: '1px solid #d9b681', background: '#8a5938', color: 'white', fontSize: 20, fontWeight: 'bold', cursor: 'pointer', touchAction: 'manipulation' }}>ОТБИРАЙ МОБИЛКУ!</button>
       </div>
+      {countdown !== null && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1, display: 'grid', placeItems: 'center', background: 'rgba(0,0,0,.82)', fontSize: 'clamp(96px, 24vw, 190px)', fontWeight: 900, color: '#ffdf8c', textShadow: '0 8px 28px #000' }}>
+          {countdown === 'GO' ? 'GO!' : countdown}
+        </div>
+      )}
     </div>
   )
 }
@@ -1023,6 +1046,7 @@ function PlayerControls({
 export default function App() {
   const [challengeActive, setChallengeActive] = useState(false)
   const [gopnikDuelActive, setGopnikDuelActive] = useState(false)
+  const [gopnikRulesActive, setGopnikRulesActive] = useState(false)
   const [gopnikNotice, setGopnikNotice] = useState('')
   const [policeDialogueActive, setPoliceDialogueActive] = useState(false)
   const [policeQuizActive, setPoliceQuizActive] = useState(false)
@@ -1046,7 +1070,7 @@ export default function App() {
   const [resetSignal, setResetSignal] = useState(0)
   const [message, setMessage] = useState('')
 
-  const paused = challengeActive || gopnikDuelActive || gopnikNotice !== '' || policeDialogueActive || policeQuizActive || policeEndingStep !== null || barDoorDialogActive || girlDialogueStep !== null || dogDialogueActive || grandpaActive || miniGameActive || exchangeStep !== null
+  const paused = challengeActive || gopnikDuelActive || gopnikRulesActive || gopnikNotice !== '' || policeDialogueActive || policeQuizActive || policeEndingStep !== null || barDoorDialogActive || girlDialogueStep !== null || dogDialogueActive || grandpaActive || miniGameActive || exchangeStep !== null
 
   useEffect(() => {
     document.exitPointerLock()
@@ -1158,8 +1182,17 @@ export default function App() {
         setResetSignal(value => value + 1)
       }, 3000)
     } else {
-      setGopnikDuelActive(true)
+      setGopnikNotice('У ВАС ОТОБРАЛИ ТЕЛЕФОН!!!')
+      window.setTimeout(() => {
+        setGopnikNotice('')
+        setGopnikRulesActive(true)
+      }, 2000)
     }
+  }
+
+  const startGopnikDuel = () => {
+    setGopnikRulesActive(false)
+    setGopnikDuelActive(true)
   }
 
   const finishGopnikDuel = (won: boolean) => {
@@ -1167,8 +1200,8 @@ export default function App() {
     setGopnikResolved(true)
     if (won) setDefeated(true)
     setGopnikNotice(won
-      ? 'Поздравляю, ты не опиздюлился!'
-      : 'Поздравляю, ты опиздюлился.')
+      ? 'Ты отобрал свою мобилку!'
+      : 'Ты не отобрал свою мобилку.')
     window.setTimeout(() => {
       setGopnikNotice('')
       if (!won) {
@@ -1332,6 +1365,21 @@ export default function App() {
 
       {gopnikDuelActive && (
         <GopnikDuelGame onFinish={finishGopnikDuel} />
+      )}
+
+      {gopnikRulesActive && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100000, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(0,0,0,.76)', fontFamily: 'Arial,sans-serif', color: 'white' }}>
+          <div style={{ width: 'min(620px, 100%)', padding: 28, borderRadius: 14, background: 'rgba(20,20,23,.98)', border: '2px solid #a88b65', boxShadow: '0 12px 40px #0009' }}>
+            <div style={{ color: '#e4b77c', fontSize: 13, letterSpacing: 2, marginBottom: 10 }}>ПРАВИЛА МИНИ-ИГРЫ</div>
+            <h2 style={{ margin: '0 0 18px', fontSize: 26 }}>Отбери свою мобилку у гопника</h2>
+            <div style={{ fontSize: 18, lineHeight: 1.55, marginBottom: 24 }}>
+              <p style={{ margin: '0 0 10px' }}>Быстро нажимай на кнопку, чтобы толкать телефон на свою сторону.</p>
+              <p style={{ margin: '0 0 10px' }}>Если телефон пробудет на твоей стороне 5 секунд — ты отобрал свой телефон.</p>
+              <p style={{ margin: 0 }}>Если телефон пробудет на стороне гопника 5 секунд — то мобила больше не твоя((.</p>
+            </div>
+            <button onClick={startGopnikDuel} style={{ width: '100%', padding: 15, borderRadius: 8, border: '1px solid #d9b681', background: '#8a5938', color: 'white', fontSize: 19, fontWeight: 'bold', cursor: 'pointer' }}>СТАРТ</button>
+          </div>
+        </div>
       )}
 
       {gopnikNotice && (
